@@ -28,7 +28,7 @@ class Image_Super_Net():
             upscaled_image = self.up_pipeline_x4(
                 prompt=[prompt],
                 image=image,
-                num_inference_steps=5,
+                num_inference_steps=20,
             ).images[0]
 
         return upscaled_image
