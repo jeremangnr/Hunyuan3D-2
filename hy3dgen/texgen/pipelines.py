@@ -188,6 +188,16 @@ class Hunyuan3DPaintPipeline:
 
     @torch.no_grad()
     def __call__(self, mesh, image):
+        import time
+        def _t(label, start):
+            torch.cuda.synchronize()
+            elapsed = time.perf_counter() - start
+            logger.info(f"[texgen] {label}: {elapsed:.2f}s")
+            return time.perf_counter()
+
+        torch.cuda.synchronize()
+        t = time.perf_counter()
+        t0 = t
 
         if not isinstance(image, List):
             image = [image]
@@ -199,14 +209,15 @@ class Hunyuan3DPaintPipeline:
             else:
                 image_prompt = image[i]
             images_prompt.append(image_prompt)
-            
+
         images_prompt = [self.recenter_image(image_prompt) for image_prompt in images_prompt]
 
         images_prompt = [self.models['delight_model'](image_prompt) for image_prompt in images_prompt]
+        t = _t("delight (light removal)", t)
 
         mesh = mesh_uv_wrap(mesh)
-
         self.render.load_mesh(mesh)
+        t = _t("uv wrap + mesh load", t)
 
         selected_camera_elevs, selected_camera_azims, selected_view_weights = \
             self.config.candidate_camera_elevs, self.config.candidate_camera_azims, self.config.candidate_view_weights
@@ -215,26 +226,34 @@ class Hunyuan3DPaintPipeline:
             selected_camera_elevs, selected_camera_azims, use_abs_coor=True)
         position_maps = self.render_position_multiview(
             selected_camera_elevs, selected_camera_azims)
+        t = _t("render normal + position maps", t)
 
         camera_info = [(((azim // 30) + 9) % 12) // {-20: 1, 0: 1, 20: 1, -90: 3, 90: 3}[
             elev] + {-20: 0, 0: 12, 20: 24, -90: 36, 90: 40}[elev] for azim, elev in
                        zip(selected_camera_azims, selected_camera_elevs)]
         multiviews = self.models['multiview_model'](images_prompt, normal_maps + position_maps, camera_info)
+        t = _t("multiview diffusion", t)
 
         for i in range(len(multiviews)):
             # multiviews[i] = self.models['super_model'](multiviews[i])
             multiviews[i] = multiviews[i].resize(
                 (self.config.render_size, self.config.render_size))
+        t = _t("super resolution", t)
 
         texture, mask = self.bake_from_multiview(multiviews,
                                                  selected_camera_elevs, selected_camera_azims, selected_view_weights,
                                                  method=self.config.merge_method)
+        t = _t("bake from multiview", t)
 
         mask_np = (mask.squeeze(-1).cpu().numpy() * 255).astype(np.uint8)
 
         texture = self.texture_inpaint(texture, mask_np)
+        t = _t("texture inpaint", t)
 
         self.render.set_texture(texture)
         textured_mesh = self.render.save_mesh()
+        torch.cuda.synchronize()
+        total = time.perf_counter() - t0
+        logger.info(f"[texgen] TOTAL: {total:.2f}s")
 
         return textured_mesh
