@@ -50,17 +50,21 @@ class Multiview_Diffusion_Net():
         pipeline.set_progress_bar_config(disable=True)
         self.pipeline = pipeline.to(self.device)
 
-        # xFormers memory-efficient attention (faster attention kernels, less VRAM)
+        # PyTorch 2.0 native scaled_dot_product_attention (Flash Attention / Memory Efficient
+        # Attention built into PyTorch — no external library needed, avoids xformers cuDNN conflicts)
         try:
-            self.pipeline.enable_xformers_memory_efficient_attention()
-            logger.info("[multiview] xFormers memory-efficient attention enabled")
+            from diffusers.models.attention_processor import AttnProcessor2_0
+            self.pipeline.unet.set_attn_processor(AttnProcessor2_0())
+            logger.info("[multiview] PyTorch 2.0 native SDPA attention enabled")
         except Exception as e:
-            logger.warning(f"[multiview] xFormers not available, using default attention: {e}")
+            logger.warning(f"[multiview] PyTorch 2.0 SDPA not available, using default attention: {e}")
 
-        # torch.compile on the UNet (20-40% faster after warmup on first inference)
+        # torch.compile on the UNet — use 'default' mode (safe for dynamic shapes).
+        # 'reduce-overhead' uses CUDA graphs which require fixed shapes and can corrupt
+        # the CUDA context for other models when shapes vary (as num_in_batch does here).
         try:
             self.pipeline.unet = torch.compile(
-                self.pipeline.unet, mode='reduce-overhead', fullgraph=False)
+                self.pipeline.unet, mode='default', fullgraph=False)
             logger.info("[multiview] torch.compile applied to UNet (first inference will be slow for warmup)")
         except Exception as e:
             logger.warning(f"[multiview] torch.compile not available, running eager mode: {e}")
