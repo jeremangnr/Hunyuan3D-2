@@ -12,6 +12,7 @@
 # fine-tuning enabling code and other elements of the foregoing made publicly available
 # by Tencent in accordance with TENCENT HUNYUAN COMMUNITY LICENSE AGREEMENT.
 
+import logging
 import os
 import random
 
@@ -20,6 +21,8 @@ import torch
 from typing import List
 from diffusers import DiffusionPipeline
 from diffusers import EulerAncestralDiscreteScheduler, LCMScheduler
+
+logger = logging.getLogger(__name__)
 
 
 class Multiview_Diffusion_Net():
@@ -46,6 +49,21 @@ class Multiview_Diffusion_Net():
 
         pipeline.set_progress_bar_config(disable=True)
         self.pipeline = pipeline.to(self.device)
+
+        # xFormers memory-efficient attention (faster attention kernels, less VRAM)
+        try:
+            self.pipeline.enable_xformers_memory_efficient_attention()
+            logger.info("[multiview] xFormers memory-efficient attention enabled")
+        except Exception as e:
+            logger.warning(f"[multiview] xFormers not available, using default attention: {e}")
+
+        # torch.compile on the UNet (20-40% faster after warmup on first inference)
+        try:
+            self.pipeline.unet = torch.compile(
+                self.pipeline.unet, mode='reduce-overhead', fullgraph=False)
+            logger.info("[multiview] torch.compile applied to UNet (first inference will be slow for warmup)")
+        except Exception as e:
+            logger.warning(f"[multiview] torch.compile not available, running eager mode: {e}")
 
     def seed_everything(self, seed):
         random.seed(seed)
