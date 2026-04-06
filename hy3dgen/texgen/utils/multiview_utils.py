@@ -59,16 +59,6 @@ class Multiview_Diffusion_Net():
         except Exception as e:
             logger.warning(f"[multiview] PyTorch 2.0 SDPA not available, using default attention: {e}")
 
-        # torch.compile on the UNet — use 'default' mode (safe for dynamic shapes).
-        # 'reduce-overhead' uses CUDA graphs which require fixed shapes and can corrupt
-        # the CUDA context for other models when shapes vary (as num_in_batch does here).
-        try:
-            self.pipeline.unet = torch.compile(
-                self.pipeline.unet, mode='default', fullgraph=False)
-            logger.info("[multiview] torch.compile applied to UNet (first inference will be slow for warmup)")
-        except Exception as e:
-            logger.warning(f"[multiview] torch.compile not available, running eager mode: {e}")
-
     def seed_everything(self, seed):
         random.seed(seed)
         np.random.seed(seed)
