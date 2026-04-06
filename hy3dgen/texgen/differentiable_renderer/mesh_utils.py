@@ -28,7 +28,12 @@ def load_mesh(mesh):
 
 
 def save_mesh(mesh, texture_data):
-    material = trimesh.visual.texture.SimpleMaterial(image=texture_data, diffuse=(255, 255, 255))
+    material = trimesh.visual.material.PBRMaterial(
+          baseColorTexture=texture_data,
+          baseColorFactor=[255, 255, 255, 255],
+          metallicFactor=0.0,
+          roughnessFactor=1.0,
+      )
     texture_visuals = trimesh.visual.TextureVisuals(uv=mesh.visual.uv, image=texture_data, material=material)
     mesh.visual = texture_visuals
     return mesh

@@ -52,7 +52,7 @@ class Hunyuan3DTexGenConfig:
 
 class Hunyuan3DPaintPipeline:
     @classmethod
-    def from_pretrained(cls, model_path, subfolder='hunyuan3d-paint-v2-0-turbo'):
+    def from_pretrained(cls, model_path, subfolder='hunyuan3d-paint-v2-0'):
         original_model_path = model_path
         if not os.path.exists(model_path):
             # try local path
